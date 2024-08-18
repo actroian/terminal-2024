@@ -43,6 +43,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         SP = 0
         # This is a good place to do initial setup
         self.scored_on_locations = []
+        self.defense_locations = []
 
     def on_turn(self, turn_state):
         """
@@ -53,10 +54,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         game engine.
         """
         game_state = gamelib.GameState(self.config, turn_state)
-        game_state.attempt_spawn(DEMOLISHER, [24, 10], 3)
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
-
         self.starter_strategy(game_state)
 
         game_state.submit_turn()
@@ -101,6 +100,9 @@ class AlgoStrategy(gamelib.AlgoCore):
                 # Lastly, if we have spare SP, let's build some supports
                 support_locations = [[13, 2], [14, 2], [13, 3], [14, 3]]
                 game_state.attempt_spawn(SUPPORT, support_locations)
+
+    def corner_cheese_strategy(self, game_state):
+        pass
 
     def build_defences(self, game_state):
         """
@@ -177,6 +179,31 @@ class AlgoStrategy(gamelib.AlgoCore):
         # By asking attempt_spawn to spawn 1000 units, it will essentially spawn as many as we have resources for
         game_state.attempt_spawn(DEMOLISHER, [24, 10], 1000)
 
+    def opp_least_damage_spawn_location(self, game_state, location_options = None):
+        """
+        This function will help us guess which location is the most vulnerable to enemy moving units.
+        It gets the path the unit will take then checks locations on that path to 
+        estimate the path's damage risk.
+        """
+        damages = []
+        opponent_edges = game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.TOP_RIGHT)
+
+        if location_options == None:
+            location_options = opponent_edges
+        # Get the damage estimate each path will take
+        vulnerable_edges = []
+        for location in location_options:
+            path = game_state.find_path_to_edge(location)
+            damage = 0
+            for path_location in path:
+                # Get number of friendly turrets that can attack each location and multiply by turret damage
+                damage += len(game_state.get_attackers(path_location, 1)) * gamelib.GameUnit(TURRET, game_state.config).damage_i
+            damages.append(damage)
+            vulnerable_edges.append(path[-1])
+         
+        # Now just return the area that takes the opponent takes the least damage
+        return vulnerable_edges[damages.index(min(damages))]
+    
     def least_damage_spawn_location(self, game_state, location_options):
         """
         This function will help us guess which location is the safest to spawn moving units from.
@@ -192,7 +219,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                 # Get number of enemy turrets that can attack each location and multiply by turret damage
                 damage += len(game_state.get_attackers(path_location, 0)) * gamelib.GameUnit(TURRET, game_state.config).damage_i
             damages.append(damage)
-        
+         
         # Now just return the location that takes the least damage
         return location_options[damages.index(min(damages))]
 
