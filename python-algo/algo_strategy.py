@@ -129,6 +129,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         We can track where the opponent scored by looking at events in action frames 
         as shown in the on_action_frame function
         """
+        vulnerable = self.scored_on_locations + self.opp_least_damage_spawn_location(game_state)
         for location in self.scored_on_locations:
             # Build turret one space above so that it doesn't block our own edge spawn locations
             build_location = [location[0], location[1]+1]
@@ -187,9 +188,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         damages = []
         opponent_edges = game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.TOP_RIGHT)
-
+        opp_edges = self.filter_blocked_locations(opponent_edges, game_state)
         if location_options == None:
-            location_options = opponent_edges
+            location_options = opp_edges
         # Get the damage estimate each path will take
         vulnerable_edges = []
         for location in location_options:
@@ -202,8 +203,9 @@ class AlgoStrategy(gamelib.AlgoCore):
             vulnerable_edges.append(path[-1])
          
         # Now just return the area that takes the opponent takes the least damage
+        #print(vulnerable_edges[damages.index(min(damages))])
         return vulnerable_edges[damages.index(min(damages))]
-    
+
     def least_damage_spawn_location(self, game_state, location_options):
         """
         This function will help us guess which location is the safest to spawn moving units from.
@@ -259,7 +261,6 @@ class AlgoStrategy(gamelib.AlgoCore):
                 gamelib.debug_write("Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
                 gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
-
 
 if __name__ == "__main__":
     algo = AlgoStrategy()
