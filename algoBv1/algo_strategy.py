@@ -56,7 +56,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         game_state = gamelib.GameState(self.config, turn_state)
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
-        self.reactive_scout_spam_strategy(game_state)
+        self.scoutv2(game_state)
 
         game_state.submit_turn()
 
@@ -112,18 +112,22 @@ class AlgoStrategy(gamelib.AlgoCore):
         if game_state.get_resource(MP) >= 10:
             self.scout_least_damage_spam(game_state, 1000, True)
 
-    def demo_scout(self, game_state):
-        self.build_defences(game_state)
+    def scoutv2(self, game_state):
+        # attack first
         mp = game_state.get_resource(MP)
+        # if game_state.my_health < 15:
+        #     self.interceptor_predict(game_state)
         if mp >= 10:
-            loc = self.scout_least_damage_spam(game_state, count=int(mp-5), support=True)
-            if loc[0] <= 13:
-                game_state.attempt_spawn(DEMOLISHER, [25,11])
-                game_state.attempt_spawn(INTERCEPTOR, [26,12])
+            loc, damage = self.scout_least_damage_spam(game_state, count=int(mp-3), support=True)
+            if damage < 20:
+                if loc[0] <= 13:
+                    game_state.attempt_spawn(DEMOLISHER, [loc[0]-1,loc[1]+1])
+                else:
+                    game_state.attempt_spawn(DEMOLISHER, [loc[0]+1,loc[1]+1])
             else:
-                game_state.attempt_spawn(DEMOLISHER, [2,11])
-                game_state.attempt_spawn(INTERCEPTOR, [1,12])
-
+                game_state.attempt_spawn(SCOUT, loc, 3)
+        self.build_defences(game_state)
+        self.build_front_reactive(game_state)
     def scout_least_damage_spam(self, game_state, count=1000, support=False):
         '''
         Finds that best path for scouts currently, and then have the option to temporarily spawn a 
@@ -134,21 +138,22 @@ class AlgoStrategy(gamelib.AlgoCore):
         # Remove locations that are blocked by our own structures 
         # since we can't deploy units there.
         deploy_locations = self.filter_blocked_locations(friendly_edges, game_state)
-        safest = self.least_damage_spawn_location(game_state, deploy_locations, 0)
+        safest, damage = self.least_damage_spawn_location(game_state, deploy_locations, 0, True)
         game_state.attempt_spawn(SCOUT, safest, count)
         if support:
-            supp_loc = [safest[0], safest[1]+2]
-            taken = game_state.contains_stationary_unit(supp_loc)
+            supp_loc = [[safest[0], safest[1]+2], [safest[0], safest[1]+3]]
+            taken = game_state.contains_stationary_unit(supp_loc[0]) and game_state.contains_stationary_unit(supp_loc[1])
             while taken:
                 if safest[0] <= 13:
-                    supp_loc[0] += 1
+                    supp_loc[0][0] += 1
+                    supp_loc[1][0] += 2
                 else:
-                    supp_loc[0] -= 1 
-                supp_loc[1] += 1
-                taken = game_state.contains_stationary_unit(supp_loc)
+                    supp_loc[0][0] -= 1 
+                    supp_loc[1][0] -= 2
+                taken = game_state.contains_stationary_unit(supp_loc[0]) and game_state.contains_stationary_unit(supp_loc[1])           
             game_state.attempt_spawn(SUPPORT, supp_loc)
             game_state.attempt_remove(supp_loc)
-        return safest
+        return safest, damage
 
     def build_defences(self, game_state):
         """
@@ -165,7 +170,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         game_state.attempt_spawn(TURRET, turret_locations)
         
         # Place walls in front of turrets to soak up damage for them
-        wall_locations = [[10, 13], [17, 13], [23, 13], [4, 13]]
+        wall_locations = [[10, 13], [23, 13], [17, 13], [4, 13]]
         edge_wall =[[0, 13], [1, 13], [2, 13], [3, 13], [4, 13], [25, 13], [26, 13], [27, 13]]
         game_state.attempt_spawn(WALL, wall_locations)
         # upgrade walls so they soak more damage
@@ -203,7 +208,26 @@ class AlgoStrategy(gamelib.AlgoCore):
         as shown in the on_action_frame function. 
         this functions builds only on the front line
         """
-        pass
+        turret_front = [[3, 12], [24, 12], [9, 12], [18, 12]]
+        wall_front = [[3, 13], [24, 13], [9, 13],[18, 13]]
+        wall_front_edge = [[0, 13], [1, 13], [2, 13], [8, 13], [11, 13], [16, 13], [19, 13],[25, 13], [26, 13], [27, 13]]
+        
+        game_state.attempt_spawn(TURRET, turret_front)
+        game_state.attempt_upgrade(turret_front)
+        game_state.attempt_spawn(WALL, wall_front)
+        game_state.attempt_upgrade(wall_front)
+        if len(self.scored_on_locations) > 10 and (game_state.get_resource(SP) > 20):
+            game_state.attempt_spawn(WALL, wall_front_edge)
+
+    def interceptor_predict(self,game_state):
+        opp_edges = game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.TOP_RIGHT)
+        # Remove locations that are blocked by our own structures 
+        # since we can't deploy units there.
+        deploy_locations = self.filter_blocked_locations(opp_edges, game_state) 
+        loc = self.least_damage_spawn_location(game_state, deploy_locations, 1) 
+        # loc is the most vulnerable to attack spot
+        game_state.attempt_spawn(INTERCEPTOR, loc)
+
 
     def stall_with_interceptors(self, game_state):
         """
@@ -250,7 +274,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         # By asking attempt_spawn to spawn 1000 units, it will essentially spawn as many as we have resources for
         game_state.attempt_spawn(DEMOLISHER, [24, 10], 1000)
 
-    def least_damage_spawn_location(self, game_state, location_options, user=0):
+    def least_damage_spawn_location(self, game_state, location_options, user=0, want_damage=False):
         """
         This function will help us guess which location is the safest to spawn moving units from.
         It gets the path the unit will take then checks locations on that path to 
@@ -276,6 +300,9 @@ class AlgoStrategy(gamelib.AlgoCore):
             if user == 1:
                 vulnerable.append(path[-1])
         # Now just return the location that takes the least damage
+        if want_damage:
+            return ((location_options[damages.index(min(damages))],min(damages)) if user == 0 else (vulnerable[damages.index(min(damages))], min(damages)))
+
         return (location_options[damages.index(min(damages))] if user == 0 else vulnerable[damages.index(min(damages))])
 
     def detect_enemy_unit(self, game_state, unit_type=None, valid_x = None, valid_y = None):
