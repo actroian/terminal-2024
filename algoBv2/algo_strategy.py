@@ -117,7 +117,11 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = game_state.get_resource(MP)
         # if game_state.my_health < 15:
         #     self.interceptor_predict(game_state)
-        if mp >= 10:
+        extra = game_state.turn_number // 10
+        if mp >= 10 + extra:
+            sup = True
+            # if game_state.my_health < 15:
+            #     sup = False
             loc, damage = self.scout_least_damage_spam(game_state, count=int(mp-3), support=True)
             if damage < 20:
                 if loc[0] <= 13:
@@ -128,7 +132,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                 game_state.attempt_spawn(SCOUT, loc, 3)
         self.build_defences(game_state)
         self.build_front_reactive(game_state)
-    def scout_least_damage_spam(self, game_state, count=1000, support=False):
+    def scout_least_damage_spam(self, game_state, count=1000, support=True):
         '''
         Finds that best path for scouts currently, and then have the option to temporarily spawn a 
         support nearby for the round
@@ -141,18 +145,18 @@ class AlgoStrategy(gamelib.AlgoCore):
         safest, damage = self.least_damage_spawn_location(game_state, deploy_locations, 0, True)
         game_state.attempt_spawn(SCOUT, safest, count)
         if support:
-            supp_loc = [[safest[0], safest[1]+2], [safest[0], safest[1]+3]]
-            taken = game_state.contains_stationary_unit(supp_loc[0]) and game_state.contains_stationary_unit(supp_loc[1])
-            while taken:
+            supp_loc = [safest[0], safest[1]+1]
+            taken = game_state.contains_stationary_unit(supp_loc)
+            while game_state.get_resource(SP) >= 4 and not taken:
                 if safest[0] <= 13:
-                    supp_loc[0][0] += 1
-                    supp_loc[1][0] += 2
+                    supp_loc[0] += 1
                 else:
-                    supp_loc[0][0] -= 1 
-                    supp_loc[1][0] -= 2
-                taken = game_state.contains_stationary_unit(supp_loc[0]) and game_state.contains_stationary_unit(supp_loc[1])           
-            game_state.attempt_spawn(SUPPORT, supp_loc)
-            game_state.attempt_remove(supp_loc)
+                    supp_loc[0] -= 1 
+                supp_loc[1] += 1
+                taken = game_state.contains_stationary_unit(supp_loc)
+                game_state.attempt_spawn(SUPPORT, supp_loc)
+                game_state.attempt_upgrade(supp_loc)
+                game_state.attempt_remove(supp_loc)
         return safest, damage
 
     def build_defences(self, game_state):
@@ -208,8 +212,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         as shown in the on_action_frame function. 
         this functions builds only on the front line
         """
-        turret_front = [[3, 12], [24, 12], [9, 12], [18, 12]]
-        wall_front = [[3, 13], [24, 13], [9, 13],[18, 13]]
+        turret_front = [[3, 12], [24, 12], [9, 12], [18, 12], [5,12], [22,12]]
+        wall_front = [[3, 13], [24, 13], [9, 13],[18, 13], [5,13], [22,13]]
         wall_front_edge = [[0, 13], [1, 13], [2, 13], [8, 13], [11, 13], [16, 13], [19, 13],[25, 13], [26, 13], [27, 13]]
         
         game_state.attempt_spawn(TURRET, turret_front)
