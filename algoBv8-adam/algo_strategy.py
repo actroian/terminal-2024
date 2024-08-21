@@ -57,7 +57,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         game_state = gamelib.GameState(self.config, turn_state)
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
-        self.scoutv3(game_state)
+        self.scoutv2(game_state)
 
         game_state.submit_turn()
 
@@ -67,112 +67,14 @@ class AlgoStrategy(gamelib.AlgoCore):
     strategy and can safely be replaced for your custom algo.
     """
 
-    def scoutv3(self, game_state):
+    def scoutv2(self, game_state):
         # attack first
         mp = game_state.get_resource(MP)
-        extra = game_state.turn_number // 10
-        distrib = self.defensive_balance(game_state)
+        if mp >= 10:
+            self.scout_least_damage_spam(game_state, 1000, support=True)
 
-        if game_state.get_resource(MP, 1) > 14:
-            opp_edges = game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.TOP_RIGHT)
-            deploy_locations = self.filter_blocked_locations(opp_edges, game_state)
-            loc = self.least_damage_spawn_location(game_state,deploy_locations ,1)
-            game_state.attempt_spawn(INTERCEPTOR, loc)
-        if mp >= 10 + extra:
-            self.scout_least_damage_spam(game_state, support=True)
-        if game_state.my_health < 15:
-            self.build_front_reactive(game_state)
-            self.build_defences(game_state)
-        else:
-            self.build_defences(game_state)
-            self.build_front_reactive(game_state)
-
-    def distrib_defense(self, game_state, distrib):
-        #LeftLeft (2-7) LeftMid (8-13) RightMid (14-19) RightRight (20-25) 
-        LL_turrets = [[4, 12], [3, 12], [5, 12], [2, 12], [6,12], [1,12], [7,12]]
-        LL_walls = [[loc[0],loc[1]+1] for loc in LL_turrets]
-        RR_turrets = [[23, 12], [24, 12], [22, 12], [25, 12], [21,12], [26,12], [20,12]]
-        RR_walls = [[loc[0],loc[1]+1] for loc in RR_turrets]
-        LM_turrets = [[10, 12], [9, 12], [11, 12], [8, 12], [12,12], [13,12]]
-        LM_walls = [[loc[0],loc[1]+1] for loc in LM_turrets]
-        RM_turrets = [[17, 12], [18, 12], [16, 12], [19, 12], [15,12], [14,12]]
-        RM_walls = [[loc[0],loc[1]+1] for loc in RM_turrets]
-
-        sp = game_state.get_resource(SP)
-        alloc = [sp*i for i in distrib] # point allocation
-        for i in range(len(alloc)):
-            pass
-
-
-
-    def defensive_balance(self, game_state):
-        '''
-        Calculate rating of defense for each section of defenses, based on health, damage, urgency
-
-        Equation: ((SUM_turrets(health) + 1.5*SUM_wall(health))  * damage) ^ urgency
-        
-        Higher rating = stronger
-        Distrib should come out to a probability vector
-        '''
-        # add urgency if recently attacked
-        distrib = [0,0,0,0] #LeftLeft (2-7) LeftMid (8-13) RightMid (14-19) RightRight (20-25) 
-        health, damage = [0,0,0,0], [0,0,0,0]
-        urgency = self.get_urgency(game_state)
-        for i in range(2,26):
-            ind = (i-2) // 6
-            turret = game_state.contains_stationary_unit([i,12])
-            wall = game_state.contains_stationary_unit([i,13])
-            if turret:
-                damage[ind] += turret.damage_i * turret.attackRange
-                health[ind] += turret.health
-            if wall:
-                health[ind] += 1.5 * wall.health
-        #softmax like calculation
-        for i in range(len(distrib)):
-            distrib[i] = (health[i] * damage[i]) ** (1/urgency[i])
-        avg = sum(distrib)/4
-        for i in range(len(distrib)):
-            distrib[i] /= avg
-            distrib[i] = math.exp(distrib[i])
-        maxx = max(distrib)
-        for i in range(len(distrib)):
-            distrib[i] = abs(distrib[i]-maxx)
-        sumx = sum(distrib)
-        for i in range(len(distrib)):
-            distrib[i] /= sumx
-        
-        return distrib
-
-    def get_urgency(self, game_state):
-        '''
-        Equation = SUM_goals((how recently scored) * relevancy) --> normalized so highest urgency is 1
-        '''
-        urg = [10,10,10,10]
-        sc = self.scored_on_locations
-        for i in range(len(sc)):
-            if sc[i][0] <= 3:
-                urg[0] += (i/len(sc))
-            elif sc[i][0] <= 5:
-                urg[0] += (i/len(sc)) * .5
-                urg[1] += (i/len(sc)) * .5
-            elif sc[i][0] <= 9:
-                urg[1] += (i/len(sc)) * .5
-                urg[2] += (i/len(sc)) * .5
-            elif sc[i][0] <= 13:
-                urg[2] += (i/len(sc)) * .5
-                urg[3] += (i/len(sc)) * .5
-            elif sc[i][0] <= 18:
-                urg[0] += (i/len(sc)) * .5
-                urg[1] += (i/len(sc)) * .5
-            elif sc[i][0] <= 22:
-                urg[1] += (i/len(sc)) * .5
-                urg[2] += (i/len(sc)) * .5
-            elif sc[i][0] <= 27:
-                urg[3] += (i/len(sc)) 
-        maxx = max(urg)
-        for i in range(len(urg)):
-            urg[i] /= maxx
-        return urg
+        self.build_defences(game_state)
+        self.build_front_reactive(game_state)
 
     def scout_least_damage_spam(self, game_state, count=1000, support=False):
         '''
@@ -181,28 +83,26 @@ class AlgoStrategy(gamelib.AlgoCore):
         '''
         friendly_edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
 
-        suboptimal_shields = [[0, 13], [1, 13], [2, 13], [3, 13], [4, 13], [5, 13], [6, 13], [7, 13], [8, 13], [9, 13], [10, 13], [11, 13], [12, 13], [13, 13], [14, 13], [15, 13], [16, 13], [17, 13], [18, 13], [19, 13], [20, 13], [21, 13], [22, 13], [23, 13], [24, 13], [25, 13], [26, 13], [27, 13], [2, 11], [3, 11], [24, 11], [25, 11], [3, 10], [4, 10], [23, 10], [24, 10], [4, 9], [5, 9], [22, 9], [23, 9], [5, 8], [6, 8], [21, 8], [22, 8], [6, 7], [7, 7], [20, 7], [21, 7], [7, 6], [8, 6], [19, 6], [20, 6], [8, 5], [9, 5], [18, 5], [19, 5], [9, 4], [10, 4], [17, 4], [18, 4], [10, 3], [11, 3], [16, 3], [17, 3], [11, 2], [12, 2], [15, 2], [16, 2], [12, 1], [13, 1], [14, 1], [15, 1], [13, 0], [14, 0]]
+        suboptimal_shields = [[0, 13], [1, 13], [2, 13], [3, 13], [4, 13], [5, 13], [6, 13], [7, 13], [8, 13], [9, 13], [10, 13], [11, 13], [12, 13], [13, 13], [14, 13], [15, 13], [16, 13], [17, 13], [18, 13], [19, 13], [20, 13], [21, 13], [22, 13], [23, 13], [24, 13], [25, 13], [26, 13], [27, 13], [1, 12], [2, 12], [3, 12], [4, 12], [5, 12], [6, 12], [7, 12], [8, 12], [9, 12], [10, 12], [11, 12], [12, 12], [13, 12], [14, 12], [15, 12], [16, 12], [17, 12], [18, 12], [19, 12], [20, 12], [21, 12], [22, 12], [23, 12], [24, 12], [25, 12], [26, 12], [2, 11], [3, 11], [24, 11], [25, 11], [3, 10], [4, 10], [23, 10], [24, 10], [4, 9], [5, 9], [22, 9], [23, 9], [5, 8], [6, 8], [21, 8], [22, 8], [6, 7], [7, 7], [20, 7], [21, 7], [7, 6], [8, 6], [19, 6], [20, 6], [8, 5], [9, 5], [18, 5], [19, 5], [9, 4], [10, 4], [17, 4], [18, 4], [10, 3], [11, 3], [16, 3], [17, 3], [11, 2], [12, 2], [15, 2], [16, 2], [12, 1], [13, 1], [14, 1], [15, 1], [13, 0], [14, 0]]
         # Remove locations that are blocked by our own structures 
         # since we can't deploy units there.
         deploy_locations = self.filter_blocked_locations(friendly_edges, game_state)
         safest, damage = self.least_damage_spawn_location_v2(game_state, deploy_locations, 0, True)
         game_state.attempt_spawn(SCOUT, safest, count)
         if support:
-            supp_loc = [safest[0], safest[1]+2]
-            taken = game_state.contains_stationary_unit(supp_loc) and game_state.contains_stationary_unit(supp_loc) != SUPPORT 
+            supp_loc = [[safest[0], safest[1]+2], [safest[0], safest[1]+3]]
+            taken = game_state.contains_stationary_unit(supp_loc[0]) and game_state.contains_stationary_unit(supp_loc[1])
             while taken:
                 if safest[0] <= 13:
-                    supp_loc[0] += 1
+                    supp_loc[0][0] += 1
+                    supp_loc[1][0] += 2
                 else:
-                    supp_loc[0] -= 1 
-                taken = game_state.contains_stationary_unit(supp_loc) and game_state.contains_stationary_unit(supp_loc) != SUPPORT
-            #flag = 
-            #if flag:
-            #    game_state.attempt_upgrade(SUPPORT, supp_loc)
-            #game_state.attempt_upgrade(supp_loc)
+                    supp_loc[0][0] -= 1 
+                    supp_loc[1][0] -= 2
+                taken = game_state.contains_stationary_unit(supp_loc[0]) and game_state.contains_stationary_unit(supp_loc[1])
+            #supp_loc = [loc for loc in supp_loc if loc not in suboptimal_shields]
             game_state.attempt_spawn(SUPPORT, supp_loc)
             game_state.attempt_remove(supp_loc)
-
         return safest, damage
 
     def build_defences(self, game_state):
@@ -223,9 +123,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         wall_locations = [[10, 13], [23, 13], [17, 13], [4, 13]]
         edge_wall =[[0, 13], [1, 13], [2, 13], [3, 13], [4, 13], [25, 13], [26, 13], [27, 13]]
         game_state.attempt_spawn(WALL, wall_locations)
+        # upgrade walls so they soak more damage
         game_state.attempt_upgrade(turret_locations)
         game_state.attempt_upgrade(wall_locations)
-        # upgrade walls so they soak more damage
 
     def build_reactive_defense(self, game_state):
         """
@@ -236,7 +136,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         defense = self.scored_on_locations
         opponent_edges = game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.TOP_RIGHT)
         opp = self.filter_blocked_locations(opponent_edges, game_state)
-        vulnerable = self.least_damage_spawn_location_v2(game_state,opp,1)
+        vulnerable = self.least_damage_spawn_location(game_state,opp,1)
         if vulnerable[0] <= 13:
             defense =  [vulnerable] + self.scored_on_locations 
         else:
@@ -246,9 +146,9 @@ class AlgoStrategy(gamelib.AlgoCore):
             diff = 1
             if location[0] > 13:
                 diff = -1
-            turret_location = [[location[0], location[1]+1],[location[0]+diff, location[1]+1]]
-            game_state.attempt_upgrade(turret_location)
+            turret_location = [[location[0], location[1]+1,],[location[0]+diff, location[1]+1]]
             game_state.attempt_spawn(TURRET, turret_location)
+            #game_state.attempt_upgrade(turret_location)
 
     def build_front_reactive(self, game_state):
         """
@@ -257,39 +157,81 @@ class AlgoStrategy(gamelib.AlgoCore):
         as shown in the on_action_frame function. 
         this functions builds only on the front line
         """
-        turret_front = [[3, 12], [24, 12], [9, 12], [18, 12]] # 0 = LL, 1=RR, 2=LM, 3= RM.... LeftRightMiddle
-        wall_front_edge = [[0, 13], [1, 13], [2, 13], [8, 13], [11, 13], [16, 13], [19, 13],[25, 13], [26, 13], [27, 13]]
+        mp = game_state.get_resource(MP)
+        if mp == 0:
+            return
+
+        far_right_turrets = [[22, 12], [24, 12], [23, 12], [22, 11], [23, 11], [24, 11]]
+        middle_right_turrets = [[16, 12], [18, 12], [17, 12], [19, 12], [16, 11], [17, 11], [18, 11], [19, 11]]
+        middle_left_turrets = [[8, 12], [10, 12], [9, 12], [11, 12], [8, 11], [9, 11], [10, 11], [11, 11]]
+        far_left_turrets = [[3, 12], [5, 12], [4, 12], [3, 11], [4, 11], [5, 11]]
+
+        far_right_walls = [[22, 13], [23, 13], [24, 13]]
+        middle_right_walls = [[16, 13], [17, 13], [18, 13], [19, 13]]
+        middle_left_walls = [[8, 13], [9, 13], [10, 13], [11, 13]]
+        far_left_walls = [[3, 12], [4, 12], [5, 12]]
+
+        turret_sections = [far_left_turrets, middle_left_turrets, middle_right_turrets, far_right_turrets]
+        wall_sections = [far_left_walls, middle_left_walls, middle_right_walls, far_right_walls]
+
+        # optimizing for use in future loops
+        section_boundaries = [
+            [turret_sections[0][i] for i in range(0,2)],
+            [turret_sections[1][i] for i in range(0,4)],
+            [turret_sections[2][i] for i in range(0,4)],
+            [turret_sections[3][i] for i in range(0,2)]
+        ]
+
+        # find weakest sections and build turrets in that priority
+
+        weakest_sections = [sublist[1] for sublist in self.find_weakest_sections(game_state, section_boundaries)]
+        for section in weakest_sections:
+            mp = game_state.get_resource(MP)
+            if mp == 0:
+                return
+            for turret in turret_sections[section]:
+                game_state.attempt_spawn(TURRET, turret)
+                game_state.attempt_upgrade(turret)
+            game_state.attempt_spawn(WALL, wall_sections[section])
+            game_state.attempt_upgrade(wall_sections[section])
+
+    def find_weakest_sections(self, game_state, turret_sections) -> list[int]:
+        locations = [[100,0],[100,1],[100,2],[100,3]]
+
+        #get location in our spawn who's path leaves us the most vulnerable
+        opponent_edges = self.filter_blocked_locations(game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.TOP_RIGHT), game_state)
+        vulnerable = self.least_damage_spawn_location_v2(game_state, opponent_edges, 1)
+
+        #find point in the path where its y value is 12 (closest to rows of turrets)
+        closest_to_turrets = None
+        path = game_state.find_path_to_edge(vulnerable)
+        for loc in path:
+            if loc[1] == 12:
+                closest_to_turrets = loc
+
+        if closest_to_turrets == None:
+            closest_to_turrets = vulnerable
+
+        # find min distance to a turret in each section
+        for i in range(0,4):
+            for turret in turret_sections[i]:
+                distance = game_state.game_map.distance_between_locations(turret, closest_to_turrets)
+                locations[i][0] = min(locations[i][0], distance)
+
+        # order in ascending order of distance
+        locations.sort()
         
-        turret_locations = turret_front
-        if len(self.scored_on_locations) >= 1:
-            turret_locations = self.predictive_turret_locations(self.scored_on_locations[::1]) + turret_front
-            last_scored = self.scored_on_locations[-1]
+        return locations
+    
+    def predictive_turret_locations(self) -> list[int]:
+        locations: list[list[int]] = []
         
-        wall_turrets = [[location[0], location[1]+1] for location in turret_locations],[[location[0]+1, location[1]+1] for location in turret_locations], [[location[0]-1, location[1]+1] for location in turret_locations]
-        for j in range(len(wall_turrets)):
-            for i in range(len(turret_locations)):
-                game_state.attempt_spawn(TURRET, turret_locations[i])
-                game_state.attempt_upgrade(turret_locations[i])
-                game_state.attempt_spawn(WALL, wall_turrets[j][i])
-                game_state.attempt_upgrade(wall_turrets[j][i])
+        for loc in self.scored_on_locations:
+            locations.append([2*loc[0], 12])
+            locations.append([2*loc[0]+1, 12])
+            locations.append([2*loc[0]-1, 12])
 
-        if game_state.get_resource(SP) > 20:
-            game_state.attempt_spawn(WALL, wall_front_edge)
-            game_state.attempt_upgrade(wall_front_edge)
-
-    def predictive_turret_locations(self, locations:list[list[int]]):
-        locs = []
-        for loc in locations:
-            x, y = loc
-            if loc[0] <= 13:
-                x += (13-y)
-            else:
-                x -= (13-y)
-            locs.append([x, 12])
-            locs.append([x+1, 12])
-            locs.append([x-1, 12])
-
-        return locs
+        return locations
 
     def least_damage_spawn_location_v2(self, game_state, location_options, user=0, want_damage=False):
         """
@@ -314,7 +256,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                 # Get number of enemy turrets that can attack each location and multiply by turret damage
                 for attacker in game_state.get_attackers(path_location, user):
                     # reduce damage by a factor of health + surrounding walls to encourage taking paths where we'll likely destroy turrets
-                    damage += gamelib.GameUnit(TURRET, game_state.config).damage_i * min(200, max(25, attacker.health + 0.2*self.get_surrounding_wall_health(game_state, attacker)))
+                    damage += gamelib.GameUnit(TURRET, game_state.config).damage_i * max(25, attacker.health) #min(200, max(25, attacker.health + 0.2*self.get_surrounding_wall_health(game_state, attacker)))
             damages.append(damage)
             if user == 1:
                 vulnerable.append(path[-1])
@@ -338,7 +280,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                 health += wall.health
         
         return health
-
+    
     def least_damage_spawn_location(self, game_state, location_options, user=0, want_damage=False):
         """
         This function will help us guess which location is the safest to spawn moving units from.
