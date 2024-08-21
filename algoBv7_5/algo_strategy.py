@@ -70,7 +70,8 @@ class AlgoStrategy(gamelib.AlgoCore):
     def scoutv2(self, game_state):
         # attack first
         mp = game_state.get_resource(MP)
-        if mp >= 10:
+        extra = game_state.turn_number // 10
+        if mp >= 8 + extra:
             self.scout_least_damage_spam(game_state, support=True)
 
         self.build_defences(game_state)
@@ -90,20 +91,18 @@ class AlgoStrategy(gamelib.AlgoCore):
         safest, damage = self.least_damage_spawn_location_v2(game_state, deploy_locations, 0, True)
         game_state.attempt_spawn(SCOUT, safest, count)
         if support:
-            supp_loc = [[safest[0], safest[1]+2], [safest[0], safest[1]+3]]
-            taken = game_state.contains_stationary_unit(supp_loc[0]) and game_state.contains_stationary_unit(supp_loc[1]) and game_state.contains_stationary_unit(supp_loc[0]) != SUPPORT and game_state.contains_stationary_unit(supp_loc[1])
+            supp_loc = [safest[0], safest[1]+2]
+            taken = game_state.contains_stationary_unit(supp_loc) and game_state.contains_stationary_unit(supp_loc) != SUPPORT 
             while taken:
                 if safest[0] <= 13:
-                    supp_loc[0][0] += 1
-                    supp_loc[1][0] += 2
+                    supp_loc[0] += 1
                 else:
-                    supp_loc[0][0] -= 1 
-                    supp_loc[1][0] -= 2
-                taken = game_state.contains_stationary_unit(supp_loc[0]) and game_state.contains_stationary_unit(supp_loc[1]) and game_state.contains_stationary_unit(supp_loc[0]) != SUPPORT and game_state.contains_stationary_unit(supp_loc[1])
+                    supp_loc[0] -= 1 
+                taken = game_state.contains_stationary_unit(supp_loc) and game_state.contains_stationary_unit(supp_loc) != SUPPORT
             #flag = 
             #if flag:
             #    game_state.attempt_upgrade(SUPPORT, supp_loc)
-            game_state.attempt_upgrade(supp_loc)
+            #game_state.attempt_upgrade(supp_loc)
             game_state.attempt_spawn(SUPPORT, supp_loc)
             game_state.attempt_remove(supp_loc)
 
